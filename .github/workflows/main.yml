@@ -1,9 +1,13 @@
-name: Laravel Tests
+name: Run Laravel Tests
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  tests:
+  laravel-tests:
     runs-on: ubuntu-latest
 
     services:
@@ -11,43 +15,53 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: laravel_testing
+          MYSQL_DATABASE: testing
+          MYSQL_USER: user
+          MYSQL_PASSWORD: password
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Set up PHP 8.2
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
-          extensions: mbstring, pdo, mysql
+          php-version: 8.2
+          extensions: mbstring, bcmath, mysql
+          coverage: none
 
-      - name: Install dependencies
-        run: composer install --prefer-dist
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-scripts
 
-      - name: Prepare environment
-        run: |
-          cp .env.example .env.test
-          echo "DB_CONNECTION=mysql" >> .env.test
-          echo "DB_HOST=127.0.0.1" >> .env.test
-          echo "DB_PORT=3306" >> .env.test
-          echo "DB_DATABASE=laravel_testing" >> .env.test
-          echo "DB_USERNAME=root" >> .env.test
-          echo "DB_PASSWORD=root" >> .env.test
-          php artisan key:generate --env=test
+      - name: Copy .env.testing
+        run: cp .env.example .env.testing
 
-      - name: Run tests
+      - name: Generate application key
+        run: php artisan key:generate --env=testing
+
+      - name: Run migrations
         env:
-          APP_ENV: testing
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
-          DB_DATABASE: laravel_testing
-          DB_USERNAME: root
-          DB_PASSWORD: root
-        run: |
-          php artisan migrate --force
-          php artisan test
+          DB_DATABASE: testing
+          DB_USERNAME: user
+          DB_PASSWORD: password
+        run: php artisan migrate --env=testing --force
+
+      - name: Run Laravel tests
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: testing
+          DB_USERNAME: user
+          DB_PASSWORD: password
+        run: php artisan test
